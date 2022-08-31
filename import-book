@@ -1,0 +1,79 @@
+#!/bin/bash
+
+root=$(pwd)
+
+tmpFile=/tmp/import.sh.$$
+trap "rm $tmpFile; exit" SIGHUP SIGINT SIGTERM
+
+rename(){
+   tmpName=$1
+   bookName="${tmpName%.*}"
+   polName=$bookName'_polished.epub'
+}
+
+renameMobi(){
+   tmpName=$1
+   bookName="${tmpName%.*}"
+   polName=$bookName'.epub'
+}
+
+import(){
+   echo Polishing the epub
+   ebook-polish -ipeuU "$root/$1"
+   echo Adding the book to the database.
+   calibredb add --automerge ignore "$root/$polName"
+   echo Deleting the original epub.
+   rm "$root/$1"
+   rm "$root/$polName"
+   echo Import Complete!
+   wait
+}
+
+importMobi() {
+   echo Adding the book to the database.
+   calibredb add --automerge ignore "$root/$1"
+   echo Delteing the original mobi.
+   rm "$root/$1"
+   echo Import Complete!
+   wait
+}
+
+convertMobi() {
+   ebook-convert "$root/$tmpName" "$root/$polName"
+}
+
+getMeta(){
+   echo $bookName
+   #title=ebook-meta "$root/$1" | grep "Title"
+   title=$(ebook-meta "$root/$1" | grep "Title")
+   author=$(ebook-meta "$root/$1" |grep "Author(s)")
+   title1=$(echo $title | xargs)
+   title2=$(echo "${title1//Title : }")
+   author1=$(echo $author | xargs)
+   author2=$(echo "${author1//Author(s) : }")
+   echo $title2
+   echo $author2
+   fetch-ebook-metadata --opf  --title "$title2" --author "$author2"> "$root/$title2.opf"
+   ebook-meta --from-opf "$root/$title2.opf" "$root/$1"
+   rm "$root/$title2.opf"
+}
+
+find_epubs() {
+   for i in *.epub; do
+      rename "$i"
+      getMeta "$i"
+      import "$i"
+   done
+}
+
+find_mobi() {
+   for i in *.mobi; do
+      convertMobi » /tmp/$tmpFile
+      importMobi "$i"
+   done
+}
+
+find_mobi
+find_epubs
+
+# rm /tmp/import.sh.$$
